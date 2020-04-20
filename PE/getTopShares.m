@@ -21,6 +21,9 @@
 %
 % Version 1.1: June 16, 2019
 %
+% Version 1.2: April 20, 2020
+% - Fixed bug in spline interpolation when the grid is fine
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
 
 function topShare = getTopShares(topProb,wGrid,wDist,zeta)
@@ -59,12 +62,13 @@ if size(topProb,1) < size(topProb,2)
 end
 
 tailProb = cumsum(flipud(wDist)); % tail probability
+[~,ia,~] = unique(tailProb); % index of unique values
 
 %% first, consider when using truncation
 if zeta == 0
     aggW = dot(wDist,wGrid); % aggregate wealth
     topWealth = cumsum(flipud(wDist.*wGrid))/aggW; % top wealth shares on grid
-    topShare = interp1([0;tailProb],[0;topWealth],topProb,'spline'); % spline interpolation
+    topShare = interp1([0;tailProb(ia)],[0;topWealth(ia)],topProb,'spline'); % spline interpolation
     return
 end
 
@@ -84,7 +88,6 @@ ind2 = find(topProb > tailProb(1)); % index for which extrapolation is unnecessa
 topShare = 0*topProb;
 topShare(ind1) = (zeta/(zeta-1))*wDist(end)^(1/zeta)*(wGrid(end)/aggW)*topProb(ind1).^(1-1/zeta);
 % extrapolate top wealth shares using Pareto distribution
-topShare(ind2) = interp1(tailProb,topWealth,topProb(ind2),'spline'); % spline interpolation
+topShare(ind2) = interp1(tailProb(ia),topWealth(ia),topProb(ind2),'spline'); % spline interpolation
 
 end
-
