@@ -33,6 +33,9 @@
 %
 % Version 1.1: June 16, 2019
 %
+% Version 1.2: April 22, 2020
+% - Fixed bug when Gstj is empty
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
 
 function [Q,pi] = getQ(PS,PJ,p,x0,xGrid,gstjn,Gstj,zeta,h)
@@ -92,7 +95,7 @@ end
 
 %% define optional arguments if not provided
 
-if nargin < 7 % asymptotic slope not provided
+if (nargin < 7)||isempty(Gstj) % asymptotic slope not provided
     ind = N*[1:J]; % index of law of motion at largest grid point
     Gstj = (gstjn(:,ind) - gstjn(:,ind-1))/(xGrid(end) - xGrid(end-1));
     % compute slope from two largest grid points
@@ -130,10 +133,11 @@ Nprime = N + max(max(max(ceil((xMax - gstjn(:,ind))./(Gstj*h)),0)));
 % number of grid points in hypothetical grid
 Nextra = Nprime - N + 1;
 r = ones(1,Nextra); % conditional probability on extra grid points
-if Nextra > 1 % nothing to do if Nextra = 0
+if Nextra > 1 % nothing to do if Nextra = 1
     temp = h/xMax;
-    r(1:end-1) = zeta*temp*(1 + [0:Nextra-2]*temp).^(-zeta-1);
-    r(end) = (1 + (Nextra-1)*temp)^(-zeta);
+    r(1:end-1) = zeta*temp*(1 + [0:Nextra-2]*temp).^(-zeta-1); % Pareto density
+    r(end) = (1 + (Nextra-1)*temp)^(-zeta); % Pareto tail probability
+    r(end) = r(end) + zeta*temp*(1 + (Nextra-1)*temp).^(-zeta-1)/2; % adjustment for trapezoidal formula
     r = r/sum(r); % normalize to probability vector
 end
 
