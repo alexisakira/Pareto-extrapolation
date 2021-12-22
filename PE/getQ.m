@@ -6,14 +6,15 @@
 %       Compute transition probability matrix using Pareto extrapolation
 %
 % Usage:
-%       [Q,pi] = getQ(PS,PJ,p,xGrid,x0,gstjn,Gstj,zeta,h)
+%       [Q,pi] = getQ(PS,PJ,V,xGrid,x0,gstjn,Gstj,zeta,h)
 %
 % Inputs:
 % PS    - (S x S) transition probability matrix of exogenous state
 % PJ    - (S^2 x J) matrix of conditional probabilities of transitory state
 %       if (1 x J), then assume distribution of j does not depend on (s,s')
 %       if (S x J), then assume distribution of j depends only on s
-% p     - birth/death probability (set 0 for infinitely-lived case)
+% V     - (S x S) survival probability matrix (set 0 for infinitely-lived case)
+%       if (1 x 1), then assume constant probability
 % x0    - initial state variable of newborn agents (not used if p=0)
 % xGrid - (1 x N) grid for state variable x (asset, wealth, etc.)
 % gstjn - (S^2 x NJ) matrix of law of motion of x
@@ -36,9 +37,12 @@
 % Version 1.2: April 22, 2020
 % - Fixed bug when Gstj is empty
 %
+% Version 1.3: December 22, 2021
+% - Allowed survival probability to be state-dependent
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
 
-function [Q,pi] = getQ(PS,PJ,p,x0,xGrid,gstjn,Gstj,zeta,h)
+function [Q,pi] = getQ(PS,PJ,V,x0,xGrid,gstjn,Gstj,zeta,h)
 %% some error checking
 
 S = size(PS,2); % number of exogenous states
@@ -61,8 +65,15 @@ elseif size(PJ,1) ~= S^2
     error('size of PS and PJ inconsistent')
 end
 
-if (p < 0)||(p >= 1)
-    error('p must be in [0,1)')
+if isscalar(V)
+    V = V*ones(S);
+end
+if (size(V,1) ~= S)||(size(V,2) ~= S)
+    error('size of PS and V inconsistent')
+end
+
+if any(V(:) < 0)||any(V(:) > 1)
+    error('entries of V must be in [0,1]')
 end
 
 if any(diff(xGrid) <= 0)
@@ -78,7 +89,7 @@ if size(gstjn,2) ~= N*J
     error('size of PJ, xGrid, and gstjn must be consistent')
 end
 
-if p>0 % there is birth/death
+if any(V) < 1 % there is birth/death
     if x0 < xGrid(1)
         error('it must be x0 >= min(xGrid)')
     elseif x0 >= xGrid(end)
@@ -113,7 +124,7 @@ if any(Gstj(:) <= 0)
 end
 
 if nargin < 8 % Pareto exponent not provided
-    zeta = getZeta(PS,PJ,p,Gstj);
+    zeta = getZeta(PS,PJ,V,Gstj);
 end
 
 if zeta <= 1
@@ -189,7 +200,7 @@ for s = 1:S
 end
 
 %% finally, adjust for birth/death
-if p > 0
+if any(V(:) < 1) % there is reset
     Qx0 = zeros(N);
     ind0 = find(xGrid < x0, 1, 'last');
     if isempty(ind0) % x0 is below smallest grid point
@@ -201,8 +212,9 @@ if p > 0
     else % x0 is above largest grid
         Qx0(:,end) = 1;
     end
-    Q0 = kron(PS,Qx0);
-    Q = (1-p)*Q + p*Q0;
+    Q0 = kron(PS,Qx0); % transition probability matrix conditional on reset
+    bigV = kron(V,ones(N)); % big survival probability matrix
+    Q = bigV.*Q + (1-bigV).*Q0;
 end
 
 if nargout > 1

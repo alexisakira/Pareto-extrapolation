@@ -3,18 +3,19 @@
 % (c) 2019 Emilien Gouin-Bonenfant and Alexis Akira Toda
 % 
 % Purpose: 
-%       Compute Pareto exponent of random growth model using Beare & Toda
-%       (2017) formula
+%       Compute Pareto exponent of Markov multiplicative process with reset
+%       using Beare & Toda (2017) formula
 %
 % Usage:
-%       zeta = getZeta(PS,PJ,p,G,zetaBar)
+%       [zeta,typeDist] = getZeta(PS,PJ,V,G,zetaBound)
 %
 % Inputs:
 % PS    - (S x S) transition probability matrix of exogenous state
 % PJ    - (S^2 x J) matrix of conditional probabilities of transitory state
 %       if (1 x J), then assume distribution of j does not depend on (s,s')
 %       if (S x J), then assume distribution of j depends only on s
-% p     - birth/death probability (set 0 for infinitely-lived case)
+% V     - (S x S) survival probability matrix (set 0 for infinitely-lived case)
+%       if (1 x 1), then assume constant probability
 % G     - (S^2 x J) matrix of asymptotic growth rates
 %       if (S x J), then assume G does not depend on s'
 %
@@ -22,13 +23,18 @@
 % zetaBound     - lower and upper bounds for searching for zeta
 %
 % Output:
-% zeta  - Pareto exponent
+% zeta      - Pareto exponent
+% typeDist  - probability distribution of types in upper tail
 %
 % Version 1.1: June 16, 2019
 %
+% Version 1.2: December 22, 2021
+% - Allowed survival probability to be state-dependent
+% - Added upper tail type distribution as output
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
 
-function zeta = getZeta(PS,PJ,p,G,zetaBound)
+function [zeta,typeDist] = getZeta(PS,PJ,V,G,zetaBound)
 %% some error checking
 if nargin < 5
     zetaBound = [1e-2,100];
@@ -55,8 +61,15 @@ elseif size(PJ,1) ~= S^2
     error('size of PS and PJ inconsistent')
 end
 
-if (p < 0)||(p >= 1)
-    error('p must be in [0,1)')
+if isscalar(V)
+    V = V*ones(S);
+end
+if (size(V,1) ~= S)||(size(V,2) ~= S)
+    error('size of PS and V inconsistent')
+end
+
+if any(V(:) < 0)||any(V(:) > 1)
+    error('entries of V must be in [0,1]')
 end
 
 if any(G(:) < 0)
@@ -82,19 +95,25 @@ if size(G,2) ~= J
 end
 
 %% use Beare & Toda (2017) formula to compute Pareto exponent
-lambda = @(z)((1-p)*eigs(PS.*(reshape(sum(PJ.*G.^z,2),S,S)'),1)-1); % objective function
+lambda = @(z)(log(eigs(PS.*V.*(reshape(sum(PJ.*G.^z,2),S,S)'),1))); % objective function
 
 if lambda(zetaLB) >= 0 % function positive for all zeta in [zetaLB,zetaUB], hence no solution
     zeta = zetaLB; % set to lower bound
     warning('zeta is below lower bound')
+    typeDist = [];
     return
 end
 
 if lambda(zetaUB) <= 0 % function negative for all zeta in [zetaLB,zetaUB], hence no solution
     zeta = zetaUB; % set to upper bound
     warning('zeta is above upper bound')
+    typeDist = [];
     return
 end
 
 zeta = fzero(lambda,zetaBound);
+temp = PS.*V.*(reshape(sum(PJ.*G.^zeta,2),S,S)');
+[v,~] = eigs(temp',1,1);
+typeDist = v/sum(v);
+
 end
