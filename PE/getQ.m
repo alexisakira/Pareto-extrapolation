@@ -6,7 +6,7 @@
 %       Compute transition probability matrix using Pareto extrapolation
 %
 % Usage:
-%       [Q,pi] = getQ(PS,PJ,V,xGrid,x0,gstjn,Gstj,zeta,h)
+%       [Q,pi] = getQ(PS,PJ,V,xGrid,x0,gstjn,Gstj,zeta)
 %
 % Inputs:
 % PS    - (S x S) transition probability matrix of exogenous state
@@ -24,7 +24,6 @@
 % Gstj  - (S^2 x J) matrix of asymptotic slope of law of motion of x
 %       if (S x J), then assume G does not depend on s'
 % zeta  - Pareto exponent
-% h     - grid spacing for extrapolation
 %
 % Output:
 % Q     - (SN x SN) transition probability matrix of (s,x)
@@ -39,10 +38,11 @@
 %
 % Version 1.3: December 22, 2021
 % - Allowed survival probability to be state-dependent
+% - Eliminated grid spacing for extrapolation from optional argument
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
 
-function [Q,pi] = getQ(PS,PJ,V,x0,xGrid,gstjn,Gstj,zeta,h)
+function [Q,pi] = getQ(PS,PJ,V,x0,xGrid,gstjn,Gstj,zeta)
 %% some error checking
 
 S = size(PS,2); % number of exogenous states
@@ -133,12 +133,9 @@ if zeta <= 1
     return
 end
 
-if nargin < 9 % grid spacing for extrapolation not provided
-    h = xGrid(end) - xGrid(end-1); % use distance between largest two grid points
-end
-
 %% construct hypothetical extra grid points and law of motion
 
+h = xGrid(end) - xGrid(end-1); % grid spacing for extrapolation
 ind = N*[1:J]; % index of law of motion at largest grid point
 Nprime = N + max(max(max(ceil((xMax - gstjn(:,ind))./(Gstj*h)),0)));
 % number of grid points in hypothetical grid
