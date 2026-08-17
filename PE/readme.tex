@@ -1,0 +1,372 @@
+\documentclass[a4paper,11pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage[margin=1in]{geometry}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage[
+    colorlinks=true,
+    citecolor=blue,
+    linkcolor=blue,
+    urlcolor=magenta
+]{hyperref}
+
+\newcommand{\matlab}{\textsf{MATLAB}}
+\newcommand{\python}{\textsf{Python}}
+\newcommand{\file}[1]{\texttt{\detokenize{#1}}}
+
+\lstdefinestyle{code}{
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue!70!black},
+    commentstyle=\color{green!45!black},
+    stringstyle=\color{purple!70!black},
+    columns=fullflexible,
+    keepspaces=true,
+    breaklines=true,
+    showstringspaces=false,
+    frame=single,
+    framerule=0.3pt,
+    xleftmargin=0.5em,
+    xrightmargin=0.5em
+}
+
+\title{\matlab\ and \python\ Files for Pareto Extrapolation}
+\author{Alexis Akira Toda\thanks{Department of Economics, Emory University.
+    Email: \href{mailto:alexis.akira.toda@emory.edu}{alexis.akira.toda@emory.edu}.}}
+\date{Revised August 16, 2026}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+This package implements the Pareto extrapolation algorithm developed by
+\cite{GouinBonenfantToda2023}.  The method augments a conventional finite-grid
+approximation with an analytical Pareto tail.  It computes the Pareto exponent,
+the stationary joint distribution of an exogenous state and a size variable
+such as wealth, and top wealth shares.  The characterization of the Pareto
+exponent is based on \cite{BeareToda2022}.
+
+The source repository is
+\href{https://github.com/alexisakira/Pareto-extrapolation}{github.com/alexisakira/Pareto-extrapolation}.
+The software is maintained by Alexis Akira Toda and is provided without
+warranty.  Users should verify numerical accuracy and economic assumptions for
+their own application.  If these routines are used in research, please cite
+\cite{GouinBonenfantToda2023}.
+
+The folder contains parallel implementations:
+
+\begin{lstlisting}[style=code]
+PE/
+|-- matlab/                  MATLAB implementation and example
+|-- python/
+|   |-- src/pareto_extrapolation/   Python package
+|   |-- examples/                   Python example
+|   |-- tests/                      MATLAB-parity and edge-case tests
+|   `-- pyproject.toml
+|-- readme.tex
+`-- readme.pdf
+\end{lstlisting}
+
+\subsection*{Index and probability conventions}
+
+Let $s,t\in\{1,\ldots,S\}$ denote the current and next exogenous states,
+$j\in\{1,\ldots,J\}$ a transitory shock, and $n\in\{1,\ldots,N\}$ a grid
+index.  Whenever an $S^2\times J$ array is required, the row for $(s,t)$ is
+
+\begin{equation*}
+    r=S(s-1)+t
+\end{equation*}
+
+in one-based notation.  Thus the rows are ordered as
+
+\begin{equation*}
+    (1,1),\ldots,(1,S);\quad\ldots;\quad(S,1),\ldots,(S,S).
+\end{equation*}
+
+In the joint transition matrix, the grid index varies fastest:
+
+\begin{equation*}
+    (s,n)=(1,1),\ldots,(1,N);\ldots;(S,1),\ldots,(S,N).
+\end{equation*}
+
+Probability transition matrices are row-stochastic.  The survival probability
+$V(s,t)$ is conditional on the transition from $s$ to $t$; use $V=1$ for an
+infinitely lived model.  Numerical inputs must be real and finite.
+
+\section{MATLAB}
+
+The \matlab\ implementation is in the \file{matlab} folder.  It uses standard
+\matlab\ functionality, including sparse matrices, \file{eigs},
+\file{discretize}, \file{pchip}, and \file{interp1}, and has been tested with
+\matlab\ R2024b.  From the \file{PE} folder, run:
+
+\begin{lstlisting}[style=code,language=Matlab]
+addpath('matlab')
+example
+\end{lstlisting}
+
+\subsection{Exponential grid: \file{expGrid.m}}
+
+\begin{lstlisting}[style=code,language=Matlab]
+grid = expGrid(a,b,c,N)
+\end{lstlisting}
+
+The function returns a strictly increasing $1\times N$ shifted-log grid on the
+closed interval $[a,b]$, with \file{grid(1) = a} and
+\file{grid(end) = b} exactly.  The concentration parameter must satisfy
+
+\begin{equation*}
+    a<c<\frac{a+b}{2},
+\end{equation*}
+
+and $N$ must be an integer no smaller than two.  For odd $N$, $c$ is the middle
+grid point; for even $N$, it lies between the middle points in shifted-log
+space.  This differs from releases through 2021, which excluded $a$ and
+generated points on $(a,b]$.
+
+\subsection{Pareto exponent: \file{getZeta.m}}
+
+\begin{lstlisting}[style=code,language=Matlab]
+[zeta,typeDist] = getZeta(PS,PJ,V,G,zetaBound)
+\end{lstlisting}
+
+The inputs are:
+
+\begin{itemize}
+    \item \file{PS}: the $S\times S$ transition matrix of the exogenous state;
+    \item \file{PJ}: conditional shock probabilities with size $1\times J$,
+    $S\times J$, or $S^2\times J$.  The shorter forms assume independence
+    from $(s,t)$ or dependence only on $s$;
+    \item \file{V}: a scalar or $S\times S$ matrix of survival probabilities;
+    \item \file{G}: asymptotic gross growth rates with size $S\times J$ or
+    $S^2\times J$; and
+    \item \file{zetaBound}: an optional two-element search interval, with
+    default $[10^{-2},100]$.
+\end{itemize}
+
+Define
+
+\begin{align*}
+    M_{st}(z) &= \sum_{j=1}^{J}\Pr(j\mid s,t)G_{stj}^{z},\\
+    A(z) &= PS\odot V\odot M(z),
+\end{align*}
+
+where $\odot$ denotes elementwise multiplication.  The Pareto exponent solves
+
+\begin{equation*}
+    \rho\!\left(A(\zeta)\right)=1,
+\end{equation*}
+
+and \file{typeDist} is the normalized left Perron vector of $A(\zeta)$.  A
+root exactly on a search bound is accepted.  If no root exists inside the
+interval, the function returns the relevant endpoint, issues a warning, and
+returns \file{typeDist = []}.
+
+\subsection{Joint transition matrix: \file{getQ.m}}
+
+\begin{lstlisting}[style=code,language=Matlab]
+[Q,piStar] = getQ(PS,PJ,V,x0,xGrid,gstjn,Gstj,zeta)
+\end{lstlisting}
+
+The first three inputs follow \file{getZeta.m}.  The remaining inputs are:
+
+\begin{itemize}
+    \item \file{x0}: the size of a newborn or reset agent.  It is used when at
+    least one entry of $V$ is below one and must satisfy $x_1\leq x_0<x_N$;
+    \item \file{xGrid}: a strictly increasing $N$-element grid with $x_N>0$;
+    \item \file{gstjn}: the law of motion evaluated on the grid.  It has $JN$
+    columns, with columns $N(j-1)+1$ through $Nj$ corresponding to shock $j$.
+    It may have $S$ rows or $S^2$ rows;
+    \item \file{Gstj}: optional asymptotic slopes with $S$ or $S^2$ rows.
+    Pass \file{[]} to estimate them from the two largest grid points; and
+    \item \file{zeta}: the optional Pareto exponent.  Pass \file{[]} to call
+    \file{getZeta.m} internally.
+\end{itemize}
+
+The function returns the $SN\times SN$ transition matrix \file{Q} as a sparse
+matrix.  If requested, \file{piStar} is the full $SN\times1$ stationary
+distribution.  The marginal distribution on the size grid is
+
+\begin{lstlisting}[style=code,language=Matlab]
+xDist = sum(reshape(piStar,N,S),2);
+\end{lstlisting}
+
+The function checks the row sums of \file{Q} and the stationary-distribution
+residual.  Pareto extrapolation requires $\zeta>1$ for a finite mean.  If
+$\zeta\leq1$, the function warns and returns NaN-valued outputs.
+
+\subsection{Top wealth shares: \file{getTopShares.m}}
+
+\begin{lstlisting}[style=code,language=Matlab]
+topShare = getTopShares(topProb,wGrid,wDist,zeta)
+\end{lstlisting}
+
+\file{topProb} is a strictly increasing vector in $[0,1]$,
+\file{wGrid} is a strictly increasing wealth grid, and \file{wDist} is a
+probability vector on that grid.  Omit \file{zeta}, pass \file{[]}, or pass
+zero to use upper-grid truncation; otherwise $\zeta$ must exceed one.
+The output has the same row or column orientation as \file{topProb}.
+
+Interpolation uses the shape-preserving \file{pchip} method.  Under Pareto
+extrapolation, the wealth represented by the largest grid point is valued as
+
+\begin{equation*}
+    \widetilde w_N=\frac{\zeta}{\zeta-1}w_N.
+\end{equation*}
+
+Negative wealth is allowed, but aggregate net wealth---including the Pareto
+correction when applicable---must be strictly positive.  Top shares can
+legitimately exceed one when households outside the selected group have debt,
+and the top-share curve can decline as indebted households enter the group.
+The function therefore does not clamp the result to $[0,1]$ or force
+monotonicity.
+
+\subsection{Example: \file{example.m}}
+
+The example uses a two-state return process and a two-point transitory shock:
+
+\begin{lstlisting}[style=code,language=Matlab]
+xGrid = expGrid(xMin,xMax,x0,N);
+gstjn = kron(Gstj,xGrid);
+
+[zeta,typeDist] = getZeta(PS,PJ,V,Gstj,[0.1 10]);
+[Q,piStar] = getQ(PS,PJ,V,x0,xGrid,gstjn,Gstj,zeta);
+
+xDist = sum(reshape(piStar,N,S),2);
+topShare = getTopShares([0.001 0.01 0.1],xGrid,xDist,zeta);
+\end{lstlisting}
+
+It produces $\zeta\approx1.721899$ and top $0.1\%$, $1\%$, and $10\%$ shares
+of approximately $0.073619$, $0.177085$, and $0.426102$.  The script also
+sets session-wide default graphics formatting and plots the wealth-tail
+probability.
+
+\section{Python}
+
+The \python\ implementation is an installable NumPy/SciPy package in the
+\file{python} folder.  It requires \python\ 3.10 or later.  From that folder,
+install the package and optional example and test dependencies with
+
+\begin{lstlisting}[style=code]
+python -m pip install -e ".[example,test]"
+pytest
+python examples/example.py
+\end{lstlisting}
+
+The public functions use snake-case names and are imported from the package as
+follows:
+
+\begin{lstlisting}[style=code,language=Python]
+from pareto_extrapolation import (
+    exp_grid,
+    get_q,
+    get_top_shares,
+    get_zeta,
+)
+\end{lstlisting}
+
+The state-pair and joint-state orderings are identical to the \matlab\ version.
+Python arrays are zero-indexed, but users do not need to transform the data
+ordering.  One-dimensional arrays replace \matlab\ row or column vectors.
+
+\subsection{Exponential grid: \file{exp_grid}}
+
+\begin{lstlisting}[style=code,language=Python]
+grid = exp_grid(a, b, c, n)
+\end{lstlisting}
+
+This is the direct NumPy counterpart of \file{expGrid.m}.  It returns a
+one-dimensional array containing both endpoints exactly and applies the same
+input restrictions and shifted-log formula.
+
+\subsection{Pareto exponent: \file{get_zeta}}
+
+\begin{lstlisting}[style=code,language=Python]
+zeta, type_dist = get_zeta(ps, pj, v, g, zeta_bound=(1e-2, 100.0))
+\end{lstlisting}
+
+The array shapes and probability conventions match \file{getZeta.m}.  A
+one-dimensional \file{pj} is interpreted as a state-independent shock
+distribution.  The implementation uses dense NumPy eigenvalue calculations
+for the small $S\times S$ matrix and SciPy's bracketed root solver.  It issues
+\file{RuntimeWarning} and returns an empty NumPy array when the exponent lies
+outside the search interval.
+
+\subsection{Joint transition matrix: \file{get_q}}
+
+\begin{lstlisting}[style=code,language=Python]
+q, pi_star = get_q(
+    ps, pj, v, x0, x_grid, gstjn,
+    g_stj=None, zeta=None,
+    compute_stationary=True,
+)
+\end{lstlisting}
+
+The input meanings and array order match \file{getQ.m}.  The function returns
+\file{q} as a SciPy CSR sparse matrix and \file{pi_star} as a one-dimensional
+NumPy array.  To skip the stationary calculation, use
+
+\begin{lstlisting}[style=code,language=Python]
+q, pi_star = get_q(..., compute_stationary=False)
+\end{lstlisting}
+
+The second returned value is then \file{None}.  If \file{g_stj} or
+\file{zeta} is \file{None}, it is estimated or computed internally.
+
+The marginal grid distribution is
+
+\begin{lstlisting}[style=code,language=Python]
+x_dist = pi_star.reshape(S, N).sum(axis=0)
+\end{lstlisting}
+
+Unlike the legacy-compatible \matlab\ interface, the \python\ function raises
+\file{ValueError} when $\zeta\leq1$ instead of returning a NaN matrix.
+
+\subsection{Top wealth shares: \file{get_top_shares}}
+
+\begin{lstlisting}[style=code,language=Python]
+top_share = get_top_shares(top_prob, w_grid, w_dist, zeta=0.0)
+\end{lstlisting}
+
+This function follows the revised negative-wealth behavior of
+\file{getTopShares.m} and uses SciPy's shape-preserving PCHIP interpolator.
+A scalar probability input returns a float.  A one-dimensional input returns a
+NumPy array.  The \matlab\ and SciPy PCHIP implementations can differ at about
+the $10^{-10}$ level even when their interpolation knots agree.
+
+\subsection{Example and tests}
+
+The script \file{python/examples/example.py} reproduces the \matlab\ example,
+prints the exponent, type distribution, top shares, and sparse-matrix size, and
+plots the wealth tail with Matplotlib.
+
+The tests in \file{python/tests} cover endpoint construction, exact-bound
+roots, invalid inputs, negative wealth, zero mass at the largest grid point,
+the complete economic example, and a fixed transition matrix generated by the
+\matlab\ implementation.  The transition entries agree to floating-point
+precision; the end-to-end top shares agree within $10^{-10}$.
+
+\begin{thebibliography}{9}
+\small
+\raggedright
+
+\bibitem{BeareToda2022}
+Brendan K. Beare and Alexis Akira Toda.
+``Determination of Pareto Exponents in Economic Models Driven by Markov
+Multiplicative Processes.''
+\emph{Econometrica}, 90(4):1811--1833, 2022.
+\href{https://doi.org/10.3982/ECTA17984}{doi:10.3982/ECTA17984}.
+
+\bibitem{GouinBonenfantToda2023}
+{\'E}milien Gouin-Bonenfant and Alexis Akira Toda.
+``Pareto Extrapolation: An Analytical Framework for Studying Tail Inequality.''
+\emph{Quantitative Economics}, 14(1):201--233, 2023.
+\href{https://doi.org/10.3982/QE1817}{doi:10.3982/QE1817}.
+
+\end{thebibliography}
+
+\end{document}
